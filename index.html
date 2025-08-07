@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SmartSeek Search</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 40px;
+      background: #f7f7f7;
+    }
+    input[type="text"] {
+      width: 60%;
+      padding: 12px;
+      font-size: 16px;
+    }
+    button {
+      padding: 12px 20px;
+      font-size: 16px;
+    }
+    .results {
+      margin-top: 30px;
+    }
+    .result {
+      background: white;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.1);
+    }
+    video {
+      width: 100%;
+      max-width: 500px;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎯 SmartSeek Demo</h1>
+  <input type="text" id="queryInput" placeholder="Type a jiu-jitsu move...">
+  <button onclick="runSearch()">Search</button>
+
+  <div class="results" id="resultsContainer"></div>
+
+  <script>
+    async function runSearch() {
+      const query = document.getElementById('queryInput').value;
+      const resultsContainer = document.getElementById('resultsContainer');
+      resultsContainer.innerHTML = 'Searching...';
+
+      try {
+        const res = await fetch(`/search?query=${encodeURIComponent(query)}`);
+        const data = await res.json();
+
+        if (!data.results || data.results.length === 0) {
+          resultsContainer.innerHTML = '<p>No results found.</p>';
+          return;
+        }
+
+        resultsContainer.innerHTML = '';
+        data.results.forEach(result => {
+          const div = document.createElement('div');
+          div.className = 'result';
+
+          const para = document.createElement('p');
+          para.textContent = result.text;
+
+          const video = document.createElement('video');
+          video.controls = true;
+          video.src = `${result.video_link}#t=${result.start_time}`;
+          video.type = "video/mp4";
+
+          div.appendChild(para);
+          div.appendChild(video);
+          resultsContainer.appendChild(div);
+        });
+
+      } catch (err) {
+        console.error(err);
+        resultsContainer.innerHTML = '<p style="color:red;">Error retrieving results.</p>';
+      }
+    }
+  </script>
+</body>
+</html>

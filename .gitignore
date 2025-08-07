@@ -1,0 +1,10 @@
+# Ignore big files and generated data
+mp4/
+transcripts/
+# Ignore everything in data/
+data/*
+# But keep video_chunks.csv
+!data/video_chunks.csv
+__pycache__/
+*.pyc
+.env
