@@ -1,84 +1,188 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>SmartSeek Search</title>
+  <meta charset="utf-8" />
+  <title>SmartSeek Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
+    :root {
+      --bg: #0b0f14;
+      --card: #121821;
+      --muted: #8ea0b3;
+      --text: #e6edf3;
+      --accent: #5ad1ff;
+      --border: #1e2733;
+      --focus: #9ae6ff;
+    }
+    html, body { height: 100%; }
     body {
-      font-family: sans-serif;
-      margin: 40px;
-      background: #f7f7f7;
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: radial-gradient(1200px 800px at 100% -50%, #122437 0%, #0b0f14 60%) fixed;
+      color: var(--text);
     }
-    input[type="text"] {
-      width: 60%;
-      padding: 12px;
-      font-size: 16px;
+    .wrap { max-width: 1100px; margin: 40px auto; padding: 0 16px; }
+    h1 { font-weight: 700; letter-spacing: .3px; margin: 0 0 14px; }
+    .muted { color: var(--muted); font-size: 14px; }
+    .search {
+      margin: 22px 0 26px; display: flex; gap: 10px; align-items: center;
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px;
     }
-    button {
-      padding: 12px 20px;
-      font-size: 16px;
+    .search input {
+      flex: 1; background: transparent; border: none; outline: none; color: var(--text);
+      font-size: 16px; padding: 10px 12px;
     }
-    .results {
-      margin-top: 30px;
+    .search button {
+      background: linear-gradient(180deg, #35b6ff, #1f9fe8);
+      color: #002338; border: none; padding: 10px 16px; font-weight: 700; border-radius: 10px;
+      cursor: pointer;
     }
-    .result {
-      background: white;
-      padding: 20px;
-      margin-bottom: 20px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.1);
+    .search button:focus { outline: 2px solid var(--focus); outline-offset: 2px; }
+    .results { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+      display: flex; flex-direction: column;
     }
-    video {
-      width: 100%;
-      max-width: 500px;
-      margin-top: 10px;
+    .vidbox { background: #0a121b; display: grid; place-items: center; aspect-ratio: 16 / 9; }
+    video { width: 100%; height: 100%; background: #000; }
+    .meta { padding: 12px; border-top: 1px solid var(--border); display: grid; gap: 8px; }
+    .file { font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .snippet { font-size: 15px; line-height: 1.4; color: #d8e3ee; max-height: 6.8em; overflow: hidden; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .tiny { font-size: 12px; color: var(--muted); }
+    .ghostbtn {
+      background: transparent; color: var(--accent); border: 1px solid var(--accent);
+      border-radius: 8px; padding: 6px 10px; cursor: pointer;
     }
+    .ghostbtn:focus { outline: 2px solid var(--focus); outline-offset: 2px; }
+    .error { margin-top: 8px; color: #ff8d8d; font-size: 14px; }
+    .empty { padding: 14px; background: #0f1621; border: 1px dashed var(--border); border-radius: 12px; color: var(--muted); }
   </style>
 </head>
 <body>
-  <h1>🎯 SmartSeek Demo</h1>
-  <input type="text" id="queryInput" placeholder="Type a jiu-jitsu move...">
-  <button onclick="runSearch()">Search</button>
+  <div class="wrap">
+    <h1>SmartSeek</h1>
+    <div class="muted">Type a question (e.g., “armbar from half guard”) and we’ll jump you to the exact moments.</div>
 
-  <div class="results" id="resultsContainer"></div>
+    <form id="searchForm" class="search" autocomplete="off">
+      <input id="q" placeholder="Search your video library…" />
+      <button type="submit">Search</button>
+    </form>
+
+    <div id="status" class="muted"></div>
+    <div id="results" class="results"></div>
+  </div>
 
   <script>
-    async function runSearch() {
-      const query = document.getElementById('queryInput').value;
-      const resultsContainer = document.getElementById('resultsContainer');
-      resultsContainer.innerHTML = 'Searching...';
+    const form = document.getElementById('searchForm');
+    const q    = document.getElementById('q');
+    const resultsEl = document.getElementById('results');
+    const statusEl  = document.getElementById('status');
 
+    // Parse a link like "https://.../File Name.mp4#t=630" into {url, start}
+    function parseTimeLink(link) {
+      const [url, frag] = String(link).split('#');
+      let start = 0;
+      if (frag && frag.startsWith('t=')) {
+        const s = Number(frag.slice(2));
+        if (!Number.isNaN(s)) start = s;
+      }
+      return { url, start };
+    }
+
+    // Create one result card with video that seeks to correct timestamp
+    function renderCard(hit) {
+      const { url, start } = parseTimeLink(hit.video_link || hit.video || '');
+      const card = document.createElement('div');
+      card.className = 'card';
+
+      const vidWrap = document.createElement('div');
+      vidWrap.className = 'vidbox';
+
+      const v = document.createElement('video');
+      v.setAttribute('playsinline', '');
+      v.setAttribute('controls', '');
+      v.preload = 'metadata';
+      v.src = url;
+
+      // Seek to start time when metadata is ready (robust across browsers)
+      v.addEventListener('loadedmetadata', () => {
+        if (start > 0 && start < (v.duration || start + 1)) {
+          try { v.currentTime = start; } catch {}
+        }
+      });
+
+      vidWrap.appendChild(v);
+      card.appendChild(vidWrap);
+
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+
+      const file = document.createElement('div');
+      file.className = 'file';
+      file.textContent = hit.source_file || '(unknown source)';
+      meta.appendChild(file);
+
+      const snip = document.createElement('div');
+      snip.className = 'snippet';
+      snip.textContent = hit.text || '';
+      meta.appendChild(snip);
+
+      const row = document.createElement('div');
+      row.className = 'row';
+
+      const openBtn = document.createElement('button');
+      openBtn.className = 'ghostbtn';
+      openBtn.textContent = 'Open in new tab';
+      openBtn.onclick = () => window.open(hit.video_link || hit.video || url, '_blank');
+
+      const when = document.createElement('div');
+      when.className = 'tiny';
+      const startFmt = Math.floor(start / 60) + ':' + String(start % 60).padStart(2, '0');
+      when.textContent = `Starts at ${startFmt}`;
+
+      row.appendChild(openBtn);
+      row.appendChild(when);
+      meta.appendChild(row);
+
+      card.appendChild(meta);
+      return card;
+    }
+
+    async function runSearch(term) {
+      resultsEl.innerHTML = '';
+      statusEl.textContent = 'Searching…';
       try {
-        const res = await fetch(`/search?query=${encodeURIComponent(query)}`);
-        const data = await res.json();
+        const r = await fetch(`/search?query=${encodeURIComponent(term)}`);
+        if (!r.ok) throw new Error(`API ${r.status}`);
+        const data = await r.json();
 
-        if (!data.results || data.results.length === 0) {
-          resultsContainer.innerHTML = '<p>No results found.</p>';
+        const hits = Array.isArray(data.results) ? data.results : [];
+        if (hits.length === 0) {
+          statusEl.innerHTML = '';
+          const empty = document.createElement('div');
+          empty.className = 'empty';
+          empty.textContent = 'No results. Try another phrasing (e.g., “d’arce from half guard”, “armbar grip break”).';
+          resultsEl.appendChild(empty);
           return;
         }
 
-        resultsContainer.innerHTML = '';
-        data.results.forEach(result => {
-          const div = document.createElement('div');
-          div.className = 'result';
-
-          const para = document.createElement('p');
-          para.textContent = result.text;
-
-          const video = document.createElement('video');
-          video.controls = true;
-          video.src = `${result.video_link}#t=${result.start_time}`;
-          video.type = "video/mp4";
-
-          div.appendChild(para);
-          div.appendChild(video);
-          resultsContainer.appendChild(div);
-        });
-
+        statusEl.textContent = `Found ${hits.length} result${hits.length>1?'s':''}`;
+        hits.forEach(hit => resultsEl.appendChild(renderCard(hit)));
       } catch (err) {
+        statusEl.innerHTML = `<span class="error">Error retrieving results.</span>`;
         console.error(err);
-        resultsContainer.innerHTML = '<p style="color:red;">Error retrieving results.</p>';
       }
     }
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const term = q.value.trim();
+      if (!term) return;
+      runSearch(term);
+    });
+
+    // Optional: run an initial demo search
+    // runSearch('armbar');
   </script>
 </body>
 </html>
