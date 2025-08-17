@@ -1,141 +1,347 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SmartSeek</title>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <title>SmartSeek Demo</title>
+
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Papa Parse for CSV (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background-color: #111;
-      color: #eee;
-      margin: 0;
-      padding: 20px;
+    .line-clamp-3 {
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
-    h1 {
-      text-align: center;
-    }
-    #search-bar {
-      display: flex;
-      justify-content: center;
-      margin-bottom: 20px;
-    }
-    input[type="text"] {
-      padding: 10px;
-      width: 300px;
-      font-size: 16px;
-      border-radius: 5px;
-      border: none;
-    }
-    button {
-      padding: 10px 15px;
-      margin-left: 10px;
-      font-size: 16px;
-      border-radius: 5px;
-      border: none;
-      cursor: pointer;
-      background-color: #007bff;
-      color: white;
-    }
-    .results {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 15px;
-    }
-    .result-card {
-      background-color: #1c1c1c;
-      padding: 15px;
-      border-radius: 8px;
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-    }
-    .result-card video {
-      width: 100%;
-      border-radius: 8px;
-      margin-bottom: 10px;
-    }
-    .result-title {
-      font-weight: bold;
-      margin-bottom: 8px;
-      font-size: 14px;
-      color: #ddd;
-    }
-    .result-text {
-      flex-grow: 1;
-      font-size: 15px;
-      margin-bottom: 10px;
-      line-height: 1.4;
-      max-height: 150px; /* taller box */
-      overflow-y: auto;
-    }
-    .open-link {
-      background-color: #444;
-      padding: 8px;
-      border-radius: 5px;
-      text-align: center;
-      color: white;
-      text-decoration: none;
-    }
-    .open-link:hover {
-      background-color: #666;
-    }
+    .fade-in { animation: fade .15s ease-in; }
+    @keyframes fade { from {opacity:.6; transform: translateY(3px)} to {opacity:1; transform:none} }
   </style>
 </head>
-<body>
-  <h1>SmartSeek</h1>
-  <div id="search-bar">
-    <input type="text" id="query" placeholder='Type a question (e.g., "armbar from half guard")' />
-    <button onclick="search()">Search</button>
+<body class="bg-slate-50 text-slate-900">
+  <!-- Header -->
+  <header class="sticky top-0 z-20 bg-white/80 backdrop-blur border-b border-slate-200">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center gap-3">
+      <div class="w-8 h-8 rounded-xl bg-slate-900 text-white grid place-content-center font-bold">S</div>
+      <h1 class="text-xl font-semibold tracking-tight">SmartSeek</h1>
+
+      <div class="ml-auto w-full max-w-2xl">
+        <div class="relative">
+          <input
+            id="searchInput"
+            type="search"
+            placeholder="Search videos & transcripts…"
+            class="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 pr-24 text-[15px] shadow-sm outline-none focus:ring-2 focus:ring-slate-900/10"
+          />
+          <div class="absolute inset-y-0 right-2 flex items-center gap-2">
+            <button id="clearBtn" class="text-slate-500 text-sm px-2 py-1 hover:text-slate-700">Clear</button>
+            <span id="countBadge" class="hidden text-xs bg-slate-900 text-white px-2 py-0.5 rounded-lg"></span>
+          </div>
+        </div>
+        <div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
+          <button class="chip" data-chip="halfguard">Half Guard</button>
+          <button class="chip" data-chip="mount">Mount</button>
+          <button class="chip" data-chip="kimura">Kimura</button>
+          <button class="chip" data-chip="pass">Guard Pass</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="max-w-6xl mx-auto px-4 py-6">
+    <div id="status" class="text-sm text-slate-600 mb-4">Loading data…</div>
+
+    <div id="grid" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"></div>
+
+    <div id="empty" class="hidden text-slate-600 text-center py-16">
+      <div class="text-3xl mb-1">🤷</div>
+      <p>No results match your search.</p>
+    </div>
+  </main>
+
+  <!-- Minimal video modal -->
+  <div id="modal" class="fixed inset-0 hidden bg-black/60 items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-3 border-b">
+        <div class="font-semibold" id="modalTitle">Preview</div>
+        <button id="modalClose" class="px-2 py-1 text-slate-600 hover:text-slate-900">✕</button>
+      </div>
+      <div class="p-4">
+        <video id="player" class="w-full rounded-lg bg-black" controls></video>
+      </div>
+      <div class="px-4 pb-4 text-sm text-slate-600" id="modalCaption"></div>
+    </div>
   </div>
-  <div id="results" class="results"></div>
 
   <script>
-    async function search() {
-      const q = document.getElementById("query").value;
-      const res = await fetch(`/search?query=${encodeURIComponent(q)}`);
-      const data = await res.json();
-      const resultsDiv = document.getElementById("results");
-      resultsDiv.innerHTML = "";
+    // --- Helpers -------------------------------------------------------------
 
-      if (!data.results.length) {
-        resultsDiv.innerHTML = "<p>No results found.</p>";
-        return;
+    // 1) Normalize any URL and preserve #t=…; fix double-encoding like %2520 → %20
+    function normalizeUrl(raw) {
+      let url = (raw || '').trim();
+      if (!url) return '';
+
+      // Split off hash (we preserve it exactly)
+      const hashIndex = url.indexOf('#');
+      const hash = hashIndex >= 0 ? url.slice(hashIndex) : '';
+      url = hashIndex >= 0 ? url.slice(0, hashIndex) : url;
+
+      // Absolute URL? Try decodeURI up to 2x to undo %2520 cases.
+      const isAbsolute = /^https?:\/\//i.test(url);
+      if (isAbsolute) {
+        for (let i = 0; i < 2; i++) {
+          try {
+            const dec = decodeURI(url);
+            if (dec === url) break;
+            url = dec;
+          } catch (_) { break; }
+        }
+        return url + hash; // keep original hash (like #t=6300)
       }
 
-      data.results.forEach(item => {
-        const card = document.createElement("div");
-        card.className = "result-card";
-
-        // Create video element
-        const video = document.createElement("video");
-        video.controls = true;
-        video.src = item.video_link; // <-- No encodeURI here
-        card.appendChild(video);
-
-        // Title
-        const title = document.createElement("div");
-        title.className = "result-title";
-        title.textContent = item.source_file || "(unknown source)";
-        card.appendChild(title);
-
-        // Text snippet
-        const text = document.createElement("div");
-        text.className = "result-text";
-        text.textContent = item.text;
-        card.appendChild(text);
-
-        // Open in new tab link
-        const openBtn = document.createElement("a");
-        openBtn.className = "open-link";
-        openBtn.href = item.video_link; // <-- No encodeURIComponent here
-        openBtn.target = "_blank";
-        openBtn.textContent = `Open in new tab   Starts at ${item.start_time}`;
-        card.appendChild(openBtn);
-
-        resultsDiv.appendChild(card);
-      });
+      // Relative path → encode safely but keep slashes
+      try {
+        url = url.split('/').map(seg => encodeURIComponent(seg)).join('/');
+      } catch (_) { /* leave as-is */ }
+      return url + hash;
     }
+
+    // 2) mm:ss from seconds
+    function asClock(sec) {
+      sec = Number(sec || 0) | 0;
+      const m = Math.floor(sec / 60);
+      const s = (sec % 60).toString().padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    // 3) Extract a friendly title from an URL or path
+    function titleFromUrl(href) {
+      try {
+        const noHash = href.split('#')[0];
+        const filename = noHash.split('/').pop() || noHash;
+        // drop extension
+        const base = filename.replace(/\.[a-z0-9]+$/i, '');
+        return decodeURIComponent(base).replace(/[_-]+/g, ' ');
+      } catch {
+        return href;
+      }
+    }
+
+    // 4) Small DOM helpers
+    const $ = (sel, el = document) => el.querySelector(sel);
+    const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
+
+    // --- Load & parse CSV ----------------------------------------------------
+
+    const statusEl = $('#status');
+    const grid = $('#grid');
+    const empty = $('#empty');
+    const searchInput = $('#searchInput');
+    const clearBtn = $('#clearBtn');
+    const countBadge = $('#countBadge');
+
+    let items = [];    // normalized objects
+    let filtered = []; // filtered view
+
+    // We’ll parse data/video_chunks.csv using Papa Parse.
+    Papa.parse('data/video_chunks.csv', {
+      download: true,
+      dynamicTyping: true,
+      skipEmptyLines: true,
+      complete: function (res) {
+        try {
+          // If there’s a header, Papa gives objects; if not, arrays.
+          const rows = res.data;
+
+          items = rows.map((row) => {
+            // Handle both header/no-header cases.
+            // From your sample, no header, columns look like:
+            // 0: uuid, 1: '', 2: chunkIdx, 3: text, 4: embedding, 5: start, 6: end, 7: link
+            let text, start, end, link;
+
+            if (Array.isArray(row)) {
+              text  = row[3];
+              start = row[row.length - 3];
+              end   = row[row.length - 2];
+              link  = row[row.length - 1];
+            } else {
+              // If header exists, try optimistic keys
+              text  = row.text || row.chunk_text || row[3];
+              start = row.start_time ?? row.start ?? row[5];
+              end   = row.end_time ?? row.end ?? row[6];
+              link  = row.video_link ?? row.link ?? row[7];
+            }
+
+            const normalized = normalizeUrl(String(link || ''));
+            const startSec = Number(start || 0);
+            const withTime = normalized.includes('#t=')
+              ? normalized
+              : `${normalized}#t=${startSec}`;
+
+            return {
+              title: titleFromUrl(normalized),
+              href: withTime,
+              start: startSec,
+              end: Number(end || 0),
+              text: String(text || '').trim(),
+            };
+          });
+
+          statusEl.textContent = `Loaded ${items.length} chunks`;
+          filtered = items;
+          render();
+        } catch (e) {
+          console.error(e);
+          statusEl.textContent = 'Failed to process CSV.';
+        }
+      },
+      error: function (err) {
+        console.error(err);
+        statusEl.textContent = 'Failed to load CSV.';
+      }
+    });
+
+    // --- UI: search & chips --------------------------------------------------
+
+    function applyFilter(q) {
+      q = (q || '').trim().toLowerCase();
+      if (!q) {
+        filtered = items;
+      } else {
+        filtered = items.filter(it =>
+          it.title.toLowerCase().includes(q) ||
+          it.text.toLowerCase().includes(q)
+        );
+      }
+
+      countBadgeToggle();
+      render();
+    }
+
+    function countBadgeToggle() {
+      if (!filtered || filtered.length === items.length) {
+        countBadge.classList.add('hidden');
+      } else {
+        countBadge.textContent = `${filtered.length}`;
+        countBadge.classList.remove('hidden');
+      }
+    }
+
+    searchInput.addEventListener('input', (e) => applyFilter(e.target.value));
+    clearBtn.addEventListener('click', () => {
+      searchInput.value = '';
+      applyFilter('');
+      searchInput.focus();
+    });
+
+    $$('.chip').forEach(chip => {
+      chip.className =
+        'chip inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1 text-sm hover:border-slate-400';
+      chip.addEventListener('click', () => {
+        searchInput.value = chip.dataset.chip || '';
+        applyFilter(searchInput.value);
+      });
+    });
+
+    // --- Render cards --------------------------------------------------------
+
+    function render() {
+      grid.innerHTML = '';
+
+      if (!filtered || filtered.length === 0) {
+        empty.classList.remove('hidden');
+        return;
+      }
+      empty.classList.add('hidden');
+
+      const frag = document.createDocumentFragment();
+
+      filtered.forEach((it) => {
+        const card = document.createElement('article');
+        card.className =
+          'fade-in bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col';
+
+        const title = document.createElement('h3');
+        title.className = 'font-semibold text-slate-900 mb-1';
+        title.textContent = it.title;
+
+        const meta = document.createElement('div');
+        meta.className = 'text-xs text-slate-500 mb-3';
+        meta.textContent = `Starts at ${asClock(it.start)} · ${it.start}s`;
+
+        const text = document.createElement('p');
+        text.className = 'text-[14px] text-slate-700 line-clamp-3';
+        text.textContent = it.text || '(no transcript)';
+
+        const actions = document.createElement('div');
+        actions.className = 'mt-4 flex gap-2';
+
+        const viewBtn = document.createElement('button');
+        viewBtn.className =
+          'rounded-xl bg-slate-900 text-white px-3 py-2 text-sm hover:bg-slate-800';
+        viewBtn.textContent = 'Preview here';
+        viewBtn.addEventListener('click', () => openModal(it));
+
+        const openBtn = document.createElement('a');
+        openBtn.className =
+          'rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50';
+        openBtn.textContent = 'Open in new tab';
+        openBtn.target = '_blank';
+        openBtn.rel = 'noopener';
+        openBtn.href = it.href; // already normalized + #t
+        // also set title attribute so the hover shows the *actual* URL
+        openBtn.title = it.href;
+
+        actions.append(viewBtn, openBtn);
+        card.append(title, meta, text, actions);
+        frag.appendChild(card);
+      });
+
+      grid.appendChild(frag);
+    }
+
+    // --- Modal player --------------------------------------------------------
+
+    const modal = $('#modal');
+    const modalClose = $('#modalClose');
+    const player = $('#player');
+    const modalTitle = $('#modalTitle');
+    const modalCaption = $('#modalCaption');
+
+    function openModal(it) {
+      modalTitle.textContent = it.title;
+      modalCaption.textContent = it.text ? it.text.slice(0, 280) : '';
+      player.src = it.href; // HTML5 players ignore #t, but many browsers jump on load
+      // Try to set time after metadata loads:
+      player.addEventListener('loadedmetadata', function once() {
+        player.currentTime = Number(it.start || 0);
+        player.removeEventListener('loadedmetadata', once);
+      });
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      player.play().catch(() => {});
+    }
+
+    function closeModal() {
+      player.pause();
+      player.removeAttribute('src');
+      player.load();
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    modalClose.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeModal();
+    });
   </script>
 </body>
 </html>
