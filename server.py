@@ -40,6 +40,11 @@ def cosine_sim(a, b):
     denom = (np.linalg.norm(a) * np.linalg.norm(b))
     return float(np.dot(a, b) / denom) if denom else 0.0
 
+# Serve files inside the data/ folder (e.g., /data/video_chunks.csv)
+@app.route("/data/<path:filename>")
+def serve_data(filename):
+    return send_from_directory("data", filename)
+
 @app.route("/search")
 def search():
     query = request.args.get("query", "").strip()
